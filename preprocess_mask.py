@@ -191,13 +191,21 @@ def draw_specular_contours(bgr_img, specular_mask, color=(0, 255, 0), thickness=
 
 def build_ignore_mask(bgr_img, object_mask):
     """
-    Gộp specular + saturated thành 1 ignore_mask duy nhất, kèm tỉ lệ diện tích
-    để cảnh báo khi ảnh quá tệ (nên yêu cầu chụp lại thay vì kết luận vội).
+    ignore_mask hiện tại CHỈ lấy specular_mask (đốm lóa sáng).
+    saturated_mask vẫn được tính và trả về riêng để tham khảo/debug, nhưng
+    TẠM CHƯA gộp vào ignore_mask vì ngưỡng near_white/near_black của
+    detect_saturated_mask chưa calibrate kỹ, dễ bắt nhầm vùng sáng tự nhiên
+    trên mặt cong -> làm ignore_ratio bị đội lên sai.
+    Khi nào calibrate xong detect_saturated_mask, bỏ comment dòng
+    "ignore_mask = cv2.bitwise_or(specular, saturated)" bên dưới để gộp lại.
     """
     specular = detect_specular_mask(bgr_img, object_mask)
     saturated = detect_saturated_mask(bgr_img, object_mask)
 
-    ignore_mask = cv2.bitwise_or(specular, saturated)
+    # TẠM: chỉ dùng specular làm ignore_mask
+    ignore_mask = specular
+    # Khi saturated_mask đã calibrate tốt, thay dòng trên bằng:
+    # ignore_mask = cv2.bitwise_or(specular, saturated)
 
     object_area = int((object_mask > 10).sum())
     ignore_area = int((ignore_mask > 10).sum())
@@ -210,42 +218,6 @@ def build_ignore_mask(bgr_img, object_mask):
         "ignore_ratio": ignore_ratio,
         "should_reshoot": ignore_ratio > 0.15,  # ngưỡng gợi ý, cần calibrate thêm
     }
-
-
-# ===============================================================================
-# MAIN: chạy thử toàn bộ pipeline trên 1 ảnh
-# ===============================================================================
-
-def process_and_detect(img_path, label="anh", output_dir="."):
-    bgr = cv2.imread(img_path)
-    if bgr is None:
-        raise FileNotFoundError(f"Không đọc được ảnh: {img_path}")
-
-    # ---- PHA 1: tiền xử lý (2 bước an toàn, luôn chạy) ----
-    nobg, mask = remove_background_gray(bgr)
-    cropped, mask_cropped = crop_to_object(nobg, mask)
-
-    # ---- [TẠM TẮT] resize đồng bộ + cân sáng nhẹ ----
-    # Muốn test 2 bước này: bỏ comment 2 hàm ở PHA 1 phía trên, rồi bỏ comment
-    # đúng 2 dòng dưới đây (lưu ý match_lightness cần 1 ảnh reference thật,
-    # ví dụ ảnh gốc shop, không phải chính ảnh nó -- ví dụ dưới chỉ minh hoạ cú pháp):
-    #
-    # cropped, _, mask_cropped, _ = resize_synchronized(cropped, cropped, mask_cropped, mask_cropped)
-    # cropped = match_lightness(cropped, anh_tham_chieu, mask_cropped, mask_tham_chieu)
-
-    # ---- PHA 2: detect vùng nghi ngờ (quét lóa sáng) ----
-    result = build_ignore_mask(cropped, mask_cropped)
-    overlay = draw_specular_contours(cropped, result["specular_mask"])
-
-    cv2.imwrite(f"{output_dir}/{label}_processed.png", cropped)
-    cv2.imwrite(f"{output_dir}/{label}_specular_mask.png", result["specular_mask"])
-    cv2.imwrite(f"{output_dir}/{label}_saturated_mask.png", result["saturated_mask"])
-    cv2.imwrite(f"{output_dir}/{label}_ignore_mask.png", result["ignore_mask"])
-    cv2.imwrite(f"{output_dir}/{label}_overlay_contour.png", overlay)
-
-    print(f"[{label}] ignore_ratio = {result['ignore_ratio']*100:.2f}%  "
-          f"should_reshoot = {result['should_reshoot']}")
-    return result
 
 
 # ===============================================================================
@@ -276,6 +248,7 @@ def process_and_detect(img_path, label="anh", output_dir="."):
     cv2.imwrite(f"{output_dir}/{label}_processed.png", cropped)
     cv2.imwrite(f"{output_dir}/{label}_specular_mask.png", result["specular_mask"])
     cv2.imwrite(f"{output_dir}/{label}_saturated_mask.png", result["saturated_mask"])
+    # ignore_mask hiện = specular_mask (xem comment trong build_ignore_mask)
     cv2.imwrite(f"{output_dir}/{label}_ignore_mask.png", result["ignore_mask"])
     cv2.imwrite(f"{output_dir}/{label}_overlay_contour.png", overlay)
 
