@@ -14,25 +14,34 @@ Cài đặt các thư viện:
 pip install opencv-python numpy rembg
 ```
 
-## 2. Tiền xử lý ảnh so sánh (`preprocess_image.py`)
+## 2. Tiền xử lý ảnh và tạo mask dữ liệu (`preprocess_mask.py`)
 
 ### Mục đích
-Tiền xử lý hình ảnh để phục vụ cho việc so sánh và khớp đặc trưng (ví dụ dùng thuật toán SuperPoint).
+- **Pha 1 (Tiền xử lý):** Tách nền bằng màu xám trung tính (tránh gắt viền) và crop sát khung vật thể để chuẩn bị cho bước khớp đặc trưng.
+- **Pha 2 (Tạo Mask):** Quét và nhận diện các vùng lóa sáng (specular) hoặc bão hòa (cháy sáng/đen tuyệt đối) để loại trừ khi so sánh, đồng thời đánh giá tỷ lệ lỗi của ảnh.
 
 ### Cách chạy
 1. Đặt 2 file ảnh cùng cấp thư mục với file code:
    - `anh_goc.jpg`
    - `anh_khach.jpg`
+   *(Có thể chạy riêng lẻ bằng cách truyền tham số: `python preprocess_mask.py anh_goc.jpg`)*
 2. Chạy lệnh:
    ```bash
-   python preprocess_image.py
+   python preprocess_mask.py
    ```
-3. Kết quả: Tạo ra 2 file `anh_goc_tien_xu_ly.jpg` và `anh_khach_tien_xu_ly.jpg`.
+3. Kết quả (với mỗi ảnh, tạo ra các file với tiền tố `goc_` hoặc `khach_`):
+   - `_processed.png`: Ảnh đã tách nền và crop sát vật thể.
+   - `_specular_mask.png`: Mask vùng lóa sáng.
+   - `_saturated_mask.png`: Mask vùng bão hòa cực trị.
+   - `_ignore_mask.png`: Mask gộp các vùng cần bỏ qua.
+   - `_overlay_contour.png`: Ảnh trực quan có vẽ viền xanh quanh các đốm lóa.
 
 ### Giải thích code
-- **Bóc nền**: Dùng `rembg` để tách nền.
-- **Cân bằng sáng**: Chuyển ảnh sang hệ màu LAB, áp dụng `CLAHE` lên kênh `L` (Lightness). Việc này giúp cân bằng độ sáng mà không làm sai lệch màu sắc thực (kênh A và B).
-- **Tô đen nền**: Dùng kênh alpha từ bước bóc nền để xác định vùng nền và đổi màu vùng đó thành đen `[0, 0, 0]`. Điều này giúp chuẩn hóa đầu vào cho AI trích xuất đặc trưng.
+- **Bóc nền và Crop (Pha 1)**: Dùng `rembg` tách nền, sử dụng nền xám để tránh tạo cạnh tương phản giả, sau đó crop sát bounding box của vật thể.
+- **Quét vùng lỗi (Pha 2)**: 
+  - Lóa sáng (Specular): Xét trên kênh HSV (Value cao, Saturation thấp) kết hợp khử nhiễu.
+  - Bão hòa (Saturated): Xét trên kênh L của LAB để tìm vùng trắng/đen tuyệt đối mất thông tin.
+- **Đánh giá ảnh**: Tính tỷ lệ diện tích vùng lỗi (`ignore_ratio`), nếu vượt ngưỡng (vd > 15%) sẽ báo cờ `should_reshoot = True` để đề xuất chụp lại ảnh.
 
 ## 3. Tiền xử lý ảnh chụp mẫu (`preprocess_gimage.py`)
 
